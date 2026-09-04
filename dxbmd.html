@@ -104,6 +104,7 @@
     color: #000;
   }
   .targets-table th { background: #f3f4f6; font-weight: 600; }
+  .targets-table td.range { font-weight: 700; }
 
   .status-grid {
     display: grid;
@@ -122,6 +123,7 @@
   .status-label { font-size: 12px; font-weight: 600; color: #000; }
   .status-value { font-size: 17px; font-weight: 700; color: #000; margin-top: 2px; }
   .status-flag { font-size: 12px; color: #000; font-style: italic; margin-top: 2px; }
+  .status-range { font-size: 11px; color: #000; opacity: 0.65; margin-top: 3px; }
 
   .recommendation-block {
     background: #f9fafb;
@@ -216,6 +218,20 @@
   <!-- MAIN SCREEN -->
   <div id="mainScreen">
 
+    <!-- TARGET RANGES -->
+    <div class="card">
+      <h2>Hedef Değerler — CKD Evre G5D</h2>
+      <table class="targets-table">
+        <tr><th>Parametre</th><th>Hedef aralık</th><th>Hedef altı</th><th>Hedef üstü</th></tr>
+        <tr><td>Düzeltilmiş Ca</td><td class="range">8.5 – 10.2 mg/dL</td><td>&lt;8.5</td><td>&gt;10.2</td></tr>
+        <tr><td>Fosfor</td><td class="range">3.5 – 5.5 mg/dL</td><td>&lt;3.5</td><td>&gt;5.5</td></tr>
+        <tr><td>iPTH</td><td class="range">130 – 600 pg/mL</td><td>&lt;130</td><td>&gt;600</td></tr>
+        <tr><td>25(OH) D vitamini</td><td class="range">≥30 ng/mL</td><td>&lt;30</td><td>—</td></tr>
+        <tr><td>Ca × P</td><td class="range">&lt;55 mg²/dL²</td><td>—</td><td>&gt;55</td></tr>
+      </table>
+      <p class="sut-note">iPTH hedefi KDIGO'ya göre normalin üst sınırının 2–9 katıdır (yaklaşık 130–600 pg/mL). Bu aralıktaki değerler hedefte kabul edilir ve tek başına tedavi değişikliği gerektirmez.</p>
+    </div>
+
     <!-- INPUT CARD -->
     <div class="card">
       <h2>Hasta Laboratuvar Değerleri</h2>
@@ -240,9 +256,15 @@
         </div>
         <div class="form-group">
           <label>Parathormon (pg/mL)
-            <span class="hint">iPTH</span>
+            <span class="hint">iPTH — hedef 130–600</span>
           </label>
           <input type="number" step="1" id="pth" placeholder="örn. 300">
+        </div>
+        <div class="form-group">
+          <label>Önceki PTH (pg/mL)
+            <span class="hint">Opsiyonel — %25 artış kuralı için</span>
+          </label>
+          <input type="number" step="1" id="pthPrev" placeholder="örn. 260 (opsiyonel)">
         </div>
         <div class="form-group">
           <label>25(OH) D Vitamini (ng/mL)
@@ -342,6 +364,16 @@
 </div>
 
 <script>
+// ---------- Hedef aralıklar (tek merkezden yönetilir) ----------
+// Assay üst sınırın farklıysa yalnızca buradaki sayıları değiştirmen yeterli.
+const HEDEF = {
+  ca:   { min: 8.5, max: 10.2, kritikAlt: 7.5 },
+  p:    { min: 3.5, max: 5.5 },
+  pth:  { min: 130, max: 600 },
+  vitd: { min: 30,  eksiklik: 20 },
+  caxp: { max: 55 }
+};
+
 // ---------- Helpers ----------
 function correctedCa(ca, alb) {
   // Formula: corrected Ca = Ca + 0.8 * (4 - albumin)
@@ -349,28 +381,26 @@ function correctedCa(ca, alb) {
 }
 
 function classifyCa(cCa) {
-  if (cCa > 10.2) return 'high';
-  if (cCa < 7.5) return 'verylow';
-  if (cCa < 8.5) return 'low';  // 7.5 - 8.5 range
-  return 'normal';
+  if (cCa > HEDEF.ca.max) return 'high';
+  if (cCa < HEDEF.ca.kritikAlt) return 'verylow';
+  if (cCa < HEDEF.ca.min) return 'low';   // 7.5 - 8.5
+  return 'normal';                        // 8.5 - 10.2 → HEDEF ARALIK
 }
 function classifyP(p) {
-  if (p > 5.5) return 'high';
+  if (p > HEDEF.p.max) return 'high';
   if (p < 1.0) return 'verylow';
-  if (p < 2.0) return 'verylow_mild'; // 1-2
-  if (p < 3.5) return 'low'; // 2-3.5
-  return 'normal';
+  if (p < 2.0) return 'verylow_mild';     // 1 - 2
+  if (p < HEDEF.p.min) return 'low';      // 2 - 3.5
+  return 'normal';                        // 3.5 - 5.5 → HEDEF ARALIK
 }
 function classifyPTH(pth) {
-  if (pth > 600) return 'veryhigh';
-  if (pth > 300) return 'high'; // 300-600 (moderately high)
-  if (pth < 130) return 'verylow';
-  if (pth < 300) return 'low'; // 130-300
-  return 'normal';
+  if (pth > HEDEF.pth.max) return 'veryhigh';  // >600 → hedef üstü
+  if (pth < HEDEF.pth.min) return 'verylow';   // <130 → hedef altı
+  return 'normal';                             // 130 - 600 → HEDEF ARALIK
 }
 function classifyVitD(v) {
-  if (v < 20) return 'deficient';
-  if (v < 30) return 'insufficient';
+  if (v < HEDEF.vitd.eksiklik) return 'deficient';
+  if (v < HEDEF.vitd.min) return 'insufficient';
   return 'normal';
 }
 
@@ -385,13 +415,20 @@ function analyze() {
   const vitd = vitdProvided ? parseFloat(vitdRaw) : null;
 
   if ([ca, alb, p, pth].some(v => isNaN(v))) {
-    alert('Lütfen Ca, albümin, P ve PTH değerlerini giriniz. (D vitamini opsiyoneldir.)');
+    alert('Lütfen Ca, albümin, P ve PTH değerlerini giriniz. (Önceki PTH ve D vitamini opsiyoneldir.)');
     return;
   }
   if (vitdProvided && isNaN(vitd)) {
     alert('Girilen D vitamini değeri geçersiz. Lütfen sayı girin veya alanı boş bırakın.');
     return;
   }
+
+  // Önceki PTH (opsiyonel) — SUT %25 artış kuralı için
+  const prevRaw = document.getElementById('pthPrev').value.trim();
+  const pthPrev = prevRaw !== '' ? parseFloat(prevRaw) : null;
+  const pthDelta = (pthPrev !== null && !isNaN(pthPrev) && pthPrev > 0)
+    ? ((pth - pthPrev) / pthPrev) * 100
+    : null;
 
   const cCa = correctedCa(ca, alb);
   const caCls = classifyCa(cCa);
@@ -406,17 +443,21 @@ function analyze() {
   // ---- Status summary ----
   html += `<div class="card"><h2>Hasta Değerlendirmesi</h2>`;
   html += `<div class="status-grid">`;
-  html += statusBox('Düzeltilmiş Ca', cCa.toFixed(2) + ' mg/dL', caFlag(caCls), caCls !== 'normal');
-  html += statusBox('Fosfor', p.toFixed(2) + ' mg/dL', pFlag(pCls), pCls !== 'normal');
-  html += statusBox('PTH', pth.toFixed(0) + ' pg/mL', pthFlag(pthCls), pthCls !== 'normal');
+  html += statusBox('Düzeltilmiş Ca', cCa.toFixed(2) + ' mg/dL', caFlag(caCls), caCls !== 'normal', '8.5 – 10.2 mg/dL');
+  html += statusBox('Fosfor', p.toFixed(2) + ' mg/dL', pFlag(pCls), pCls !== 'normal', '3.5 – 5.5 mg/dL');
+  html += statusBox('PTH', pth.toFixed(0) + ' pg/mL', pthFlag(pthCls, pth), pthCls !== 'normal', '130 – 600 pg/mL');
   if (vitdProvided) {
-    html += statusBox('25(OH)D', vitd.toFixed(1) + ' ng/mL', vitdFlag(vitdCls), vitdCls !== 'normal');
+    html += statusBox('25(OH)D', vitd.toFixed(1) + ' ng/mL', vitdFlag(vitdCls), vitdCls !== 'normal', '≥30 ng/mL');
   } else {
-    html += statusBox('25(OH)D', '—', 'Girilmedi', false);
+    html += statusBox('25(OH)D', '—', 'Girilmedi', false, '≥30 ng/mL');
   }
-  html += statusBox('Ca × P', caxp.toFixed(1) + ' mg²/dL²', caxp > 55 ? 'YÜKSEK RİSK' : 'Normal', caxp > 55);
+  html += statusBox('Ca × P', caxp.toFixed(1) + ' mg²/dL²', caxp > HEDEF.caxp.max ? 'YÜKSEK RİSK' : '✓ Hedefte', caxp > HEDEF.caxp.max, '<55 mg²/dL²');
   html += `</div>`;
   html += `<p style="font-size:13px; font-style:italic;">Düzeltilmiş Ca = Ölçülen Ca + 0.8 × (4 − Albümin) formülü kullanılmıştır.</p>`;
+  if (pthDelta !== null) {
+    const yon = pthDelta >= 0 ? 'artış' : 'azalma';
+    html += `<p style="font-size:13px; font-style:italic;">PTH trendi: önceki ${pthPrev.toFixed(0)} pg/mL → şimdiki ${pth.toFixed(0)} pg/mL (%${Math.abs(pthDelta).toFixed(0)} ${yon}).</p>`;
+  }
   html += `</div>`;
 
   // ---- Count abnormalities (vit D only counts if provided) ----
@@ -432,10 +473,10 @@ function analyze() {
   const vitdForLogic = vitdProvided ? vitdCls : 'normal';
 
   if (abCount === 0) {
-    html += `<div class="card"><div class="all-normal">✓ Tüm parametreler hedef aralıkta.<br><span style="font-weight:400; font-size:14px;">Mevcut tedavi ile rutin takibe devam.</span></div></div>`;
+    html += `<div class="card"><div class="all-normal">✓ Tüm parametreler hedef aralıkta.<br><span style="font-weight:400; font-size:14px;">Mevcut tedavi ile rutin takibe devam. Tedavi değişikliği gerekmez.</span></div></div>`;
   } else {
     html += `<div class="card"><h2>Tedavi Önerileri</h2>`;
-    html += `<p style="margin-bottom:10px;"><strong>${abCount} parametre bozukluk tespit edildi.</strong> ${abCount === 1 ? 'Tek parametre' : abCount === 2 ? 'İkili parametre' : abCount === 3 ? 'Üçlü parametre' : 'Dörtlü parametre'} yaklaşımı uygulanacak.</p>`;
+    html += `<p style="margin-bottom:10px;"><strong>${abCount} parametre hedef dışı.</strong> ${abCount === 1 ? 'Tek parametre' : abCount === 2 ? 'İkili parametre' : abCount === 3 ? 'Üçlü parametre' : 'Dörtlü parametre'} yaklaşımı uygulanacak.</p>`;
 
     if (abCount === 1) {
       html += singleParamRecs(caCls, pCls, pthCls, vitdForLogic, cCa);
@@ -447,11 +488,25 @@ function analyze() {
       html += quadParamRecs(caCls, pCls, pthCls, vitdForLogic, cCa);
     }
 
-    if (caxp > 55) {
+    if (caxp > HEDEF.caxp.max) {
       html += `<div class="warning-note">Ca × P çarpımı ${caxp.toFixed(1)} mg²/dL² (>55). Vasküler kalsifikasyon riski çok yüksek — hızlı müdahale gerekir.</div>`;
     }
 
     html += `</div>`;
+  }
+
+  // ---- PTH hedef içinde ama yükselen trend (SUT %25 kuralı) ----
+  if (pthCls === 'normal' && pth >= 300 && pthDelta !== null && pthDelta > 25) {
+    html += `<div class="card"><h2>Trend Değerlendirmesi</h2>
+      <div class="recommendation-block">
+        <h3>PTH hedef aralıkta (300–600) ancak %${pthDelta.toFixed(0)} artmış</h3>
+        <ul>
+          <li>Değer hedef aralıkta olduğu için <strong>tek başına</strong> tedavi endikasyonu değildir; progresif artış varlığında tedavi başlanması değerlendirilebilir.</li>
+          <li>Aktif D vitamini analoğu başlanabilir.
+            <div class="sut-note">SUT: Parikalsitol IV için PTH 300–600 arasındaysa bir önceki ölçüme göre %25 üzerinde artış aranır — bu koşul sağlanmıştır. Ayrıca düzeltilmiş Ca ≤10.2 ve P ≤5.5 olmalıdır.</div></li>
+          <li>Önce fosfor ve D vitamini durumunu optimize et; artışın nedenini (uyumsuzluk, diyaliz yetersizliği, hiperfosfatemi) araştır.</li>
+        </ul>
+      </div></div>`;
   }
 
   const results = document.getElementById('results');
@@ -460,37 +515,37 @@ function analyze() {
   results.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
-function statusBox(label, val, flag, isAbn) {
+function statusBox(label, val, flag, isAbn, range) {
   return `<div class="status-item ${isAbn ? 'warn' : 'ok'}">
     <div class="status-label">${label}</div>
     <div class="status-value">${val}</div>
     <div class="status-flag">${flag}</div>
+    ${range ? `<div class="status-range">Hedef: ${range}</div>` : ''}
   </div>`;
 }
 function caFlag(c) {
-  if (c === 'high') return 'Hiperkalsemi';
-  if (c === 'verylow') return 'Ciddi Hipokalsemi (<7.5)';
-  if (c === 'low') return 'Hipokalsemi';
-  return 'Normal';
+  if (c === 'high') return 'Hiperkalsemi (>10.2)';
+  if (c === 'verylow') return 'Ciddi hipokalsemi (<7.5)';
+  if (c === 'low') return 'Hipokalsemi (<8.5)';
+  return '✓ Hedefte (8.5–10.2)';
 }
 function pFlag(c) {
-  if (c === 'high') return 'Hiperfosfatemi';
-  if (c === 'verylow') return 'Ciddi Hipofosfatemi (<1)';
-  if (c === 'verylow_mild') return 'Hipofosfatemi (1-2)';
-  if (c === 'low') return 'Hipofosfatemi (2-3.5)';
-  return 'Normal';
+  if (c === 'high') return 'Hiperfosfatemi (>5.5)';
+  if (c === 'verylow') return 'Ciddi hipofosfatemi (<1)';
+  if (c === 'verylow_mild') return 'Hipofosfatemi (1–2)';
+  if (c === 'low') return 'Hipofosfatemi (2–3.5)';
+  return '✓ Hedefte (3.5–5.5)';
 }
-function pthFlag(c) {
-  if (c === 'veryhigh') return 'Yüksek PTH (>600)';
-  if (c === 'high') return 'Yüksek PTH (300-600)';
-  if (c === 'verylow') return 'Düşük PTH (<130)';
-  if (c === 'low') return 'Düşük PTH (130-300)';
-  return 'Normal';
+function pthFlag(c, pth) {
+  if (c === 'veryhigh') return 'Hedef üstü (>600)';
+  if (c === 'verylow') return 'Hedef altı (<130) — adinamik kemik riski';
+  if (pth >= 300) return '✓ Hedefte (üst yarı, 300–600)';
+  return '✓ Hedefte (alt yarı, 130–300)';
 }
 function vitdFlag(c) {
-  if (c === 'deficient') return 'Eksiklik';
-  if (c === 'insufficient') return 'Yetersizlik';
-  return 'Normal';
+  if (c === 'deficient') return 'Eksiklik (<20)';
+  if (c === 'insufficient') return 'Yetersizlik (20–29)';
+  return '✓ Hedefte (≥30)';
 }
 
 // ---------- Single-parameter blocks ----------
@@ -503,9 +558,7 @@ function singleParamRecs(ca, p, pth, vitd, cCa) {
   if (p === 'low') out += recHypoP_mild();
   if (p === 'verylow_mild') out += recHypoP_mod();
   if (p === 'verylow') out += recHypoP_severe();
-  if (pth === 'high') out += recHighPTH_mod();
   if (pth === 'veryhigh') out += recHighPTH_severe();
-  if (pth === 'low') out += recLowPTH_mild();
   if (pth === 'verylow') out += recLowPTH_severe();
   if (vitd === 'deficient' || vitd === 'insufficient') out += recVitD(vitd);
   return out;
@@ -579,15 +632,8 @@ function recHypoP_severe() {
     </ul>
     <div class="warning-note">Ciddi hipofosfatemi — acil IV replasman.</div></div>`;
 }
-function recHighPTH_mod() {
-  return `<div class="recommendation-block"><h3>Yüksek PTH (300–600 pg/mL)</h3>
-    <ol>
-      <li>Kalsitriol veya aktif D vitamini analogları başla.<div class="sut-note">SUT: Parikalsitol IV için PTH 300-600 arasındaysa bir önceki ölçüme göre %25'in üzerinde artış aranmalı.</div></li>
-      <li>Kalsimimetik + aktif D vitamini analoğu başla. Ca ve P yakın takip; kombine kullanım en etkili.</li>
-    </ol></div>`;
-}
 function recHighPTH_severe() {
-  return `<div class="recommendation-block"><h3>Yüksek PTH (&gt;600 pg/mL)</h3>
+  return `<div class="recommendation-block"><h3>Hedef Üstü PTH (&gt;600 pg/mL)</h3>
     <ol>
       <li>Kalsitriol veya aktif D vitamini analogları başla.<div class="sut-note">SUT: Parikalsitol IV; Ca ≤10.2 ve P ≤5.5 koşulunu karşılıyorsa başlanır.</div></li>
       <li>Kalsimimetik (sinakalset) ekle.<div class="sut-note">SUT: Ca ≥8.5 ve PTH &gt;600 gereklidir.</div></li>
@@ -595,27 +641,15 @@ function recHighPTH_severe() {
       <li>Paratiroidektomi: medikal tedaviye yanıtsız olgularda (PTH çok yüksek + hiperkalsemi + hiperfosfatemi direnci).</li>
     </ol></div>`;
 }
-function recLowPTH_mild() {
-  return `<div class="recommendation-block"><h3>Düşük PTH (130–300 pg/mL)</h3>
-    <ul>
-      <li>Kalsitriol dozunu azalt.</li>
-      <li>Parikalsitol kes.</li>
-      <li>Kalsimimetik (sinakalset) kullanılıyorsa kes.</li>
-      <li>Kalsiyum içeren fosfat bağlayıcı dozunu azalt.</li>
-      <li>Diyalizat Ca'ını 1.25 mmol/L olarak ayarla.</li>
-      <li>Alüminyum maruziyetini ekarte et (mikrositik anemi, EPO'ya direnç, deferoksamin testi).</li>
-    </ul>
-    <div class="sut-note">SUT: Parikalsitol kesilme kriteri PTH &lt;150. Sinakalset kesilme kriteri PTH &lt;300.</div></div>`;
-}
 function recLowPTH_severe() {
-  return `<div class="recommendation-block"><h3>Düşük PTH (&lt;130 pg/mL) — Adinamik Kemik Hastalığı Riski</h3>
+  return `<div class="recommendation-block"><h3>Hedef Altı PTH (&lt;130 pg/mL) — Adinamik Kemik Hastalığı Riski</h3>
     <ul>
       <li>Kalsitriol kes.</li>
       <li>Parikalsitol kes.</li>
       <li>Kalsimimetik (sinakalset) kullanılıyorsa kes.</li>
       <li>Kalsiyum içeren fosfat bağlayıcı dozunu azalt.</li>
       <li>Diyalizat Ca'ını 1.25 mmol/L olarak ayarla.</li>
-      <li>Alüminyum maruziyetini ekarte et.</li>
+      <li>Alüminyum maruziyetini ekarte et (mikrositik anemi, EPO'ya direnç, deferoksamin testi).</li>
     </ul>
     <div class="warning-note">Adinamik kemik hastalığı riski.</div>
     <div class="sut-note">SUT: Parikalsitol kesilme kriteri PTH &lt;150. Sinakalset kesilme kriteri PTH &lt;300.</div></div>`;
@@ -634,8 +668,7 @@ function recVitD(level) {
 }
 
 // ---------- Dual-parameter combinations ----------
-// We handle the most clinically relevant combinations from the document.
-// Directions: ca in {high, low, verylow}; p in {high, low, verylow, verylow_mild}; pth in {high, veryhigh, low, verylow}; vitd in {deficient, insufficient}
+// Directions: ca in {high, low, verylow}; p in {high, low, verylow, verylow_mild}; pth in {veryhigh, verylow}; vitd in {deficient, insufficient}
 function dualParamRecs(ca, p, pth, vitd, cCa, caxp) {
   let out = '';
 
@@ -648,22 +681,22 @@ function dualParamRecs(ca, p, pth, vitd, cCa, caxp) {
        'Diyaliz etkinliğini artır.'],
       'Ca × P &gt;55 ise vasküler kalsifikasyon riski çok yüksek — hızlı müdahale.');
   }
-  // Ca↑ + PTH↑
-  if ((ca === 'high') && (pth === 'high' || pth === 'veryhigh')) {
-    out += rb('Ca ↑ + PTH ↑',
+  // Ca↑ + PTH>600
+  if ((ca === 'high') && (pth === 'veryhigh')) {
+    out += rb('Ca ↑ + PTH &gt;600',
       ['Kalsimimetik (sinakalset) başla — hem Ca\'ı hem PTH\'ı düşürür.<div class="sut-note">SUT: Ca ≥8.5 ve PTH &gt;600 gerekli.</div>',
        'Aktif D vitamini azalt veya kes.',
        'Diyalizat Ca\'ını 1.25 mmol/L olarak ayarla.'], null);
   }
-  // Ca↑ + PTH↓
-  if ((ca === 'high') && (pth === 'low' || pth === 'verylow')) {
-    out += rb('Ca ↑ + PTH ↓',
+  // Ca↑ + PTH<130
+  if ((ca === 'high') && (pth === 'verylow')) {
+    out += rb('Ca ↑ + PTH &lt;130',
       ['Aktif D vitamini kullanılıyorsa <strong>kes</strong>.',
-       'Kalsimimetik (sinakalset) — PTH &lt;300 ise kes.',
+       'Kalsimimetik (sinakalset) kullanılıyorsa kes.<div class="sut-note">SUT: Sinakalset kesilme kriteri PTH &lt;300.</div>',
        'Kalsiyumsuz fosfor bağlayıcı kullan.',
        'Diyalizat Ca\'ını 1.25 mmol/L olarak ayarla.',
        'Oral Ca desteği varsa kes.'],
-      'Adinamik kemik riski (özellikle PTH &lt;130). Alüminyum maruziyetini ekarte et.');
+      'Adinamik kemik riski. Alüminyum maruziyetini ekarte et.');
   }
   // Ca↓ + P↑
   if ((ca === 'low' || ca === 'verylow') && (p === 'high')) {
@@ -680,9 +713,9 @@ function dualParamRecs(ca, p, pth, vitd, cCa, caxp) {
        'Diyalizat Ca\'ını 1.50 mmol/L olarak ayarla.'],
       ca === 'verylow' ? 'Ca &lt;7.5 — IV kalsiyum gerekir.' : null);
   }
-  // Ca<8.5 + PTH<300
-  if ((ca === 'low' || ca === 'verylow') && (pth === 'low' || pth === 'verylow')) {
-    out += rb('Ca &lt;8.5 + PTH &lt;300',
+  // Ca<8.5 + PTH<130
+  if ((ca === 'low' || ca === 'verylow') && (pth === 'verylow')) {
+    out += rb('Ca &lt;8.5 + PTH &lt;130',
       ['Kalsimimetik (sinakalset) ve aktif D vitamini <strong>kes</strong>.',
        'Oral kalsiyum desteği ver.',
        'Diyalizat Ca\'ını 1.50 mmol/L olarak ayarla.',
@@ -696,12 +729,13 @@ function dualParamRecs(ca, p, pth, vitd, cCa, caxp) {
        'P &lt;5.5 olduktan sonra aktif D vitamini ve/veya kalsimimetik başla.<div class="sut-note">SUT: Sinakalset için Ca ≥8.5 ve PTH &gt;600 gerekli.</div>'],
       'P yüksekken aktif D vitamini Ca × P\'yi tehlikeli şekilde artırabilir.');
   }
-  // P↑ + PTH<300
-  if ((p === 'high') && (pth === 'low' || pth === 'verylow')) {
-    out += rb('P ↑ + PTH &lt;300',
+  // P↑ + PTH<130
+  if ((p === 'high') && (pth === 'verylow')) {
+    out += rb('P ↑ + PTH &lt;130',
       ['Kalsiyumsuz fosfat bağlayıcı (sevelamer öncelikli) başla.<div class="sut-note">SUT: Sevelamer için P &gt;4 şartı ve 3 ay kalsiyumlu bağlayıcı kullanım öyküsü.</div>',
        'Aktif D vitamini ve kalsimimetik kullanılıyorsa <strong>KES</strong>.',
-       'Diyaliz etkinliğini artır.'], null);
+       'Diyaliz etkinliğini artır.'],
+      'Adinamik kemik + vasküler kalsifikasyon riski birlikte.');
   }
   // P↓ + PTH>600
   if ((p === 'low' || p === 'verylow' || p === 'verylow_mild') && (pth === 'veryhigh')) {
@@ -711,9 +745,9 @@ function dualParamRecs(ca, p, pth, vitd, cCa, caxp) {
        'Nütrisyon desteği.'],
       'P düşüklüğü genellikle malnütrisyon göstergesi — beslenme değerlendirmesi yap.');
   }
-  // 25(OH)D↓ + PTH↑
-  if ((vitd === 'deficient' || vitd === 'insufficient') && (pth === 'high' || pth === 'veryhigh')) {
-    out += rb('25(OH)D ↓ + PTH ↑',
+  // 25(OH)D↓ + PTH>600
+  if ((vitd === 'deficient' || vitd === 'insufficient') && (pth === 'veryhigh')) {
+    out += rb('25(OH)D ↓ + PTH &gt;600',
       ['<strong>ÖNCE nütrisyonel D vitamini (kolekalsiferol) ile replasman.</strong>',
        '25(OH)D ≥30 olduktan sonra PTH hala yüksekse aktif D vitamini/kalsimimetik ekle.<div class="sut-note">SUT: Sinakalset için Ca ≥8.5 ve PTH &gt;600 gerekli.</div>'],
       'Nütrisyonel D vitamini tek başına PTH\'ı düşürebilir.');
@@ -742,7 +776,6 @@ function genericDualFallback(ca, p, pth, vitd) {
 
 // ---------- Triple-parameter combinations ----------
 function tripleParamRecs(ca, p, pth, vitd, cCa) {
-  // Identify scenarios from document
   // 1) Ca>10.2 + P>5.5 + PTH>600
   if (ca === 'high' && p === 'high' && pth === 'veryhigh') {
     return rb('Ca ↑ + P ↑ + PTH &gt;600 — EN YÜKSEK RİSK SENARYOSU',
@@ -754,53 +787,53 @@ function tripleParamRecs(ca, p, pth, vitd, cCa) {
        'Yanıtsızsa <strong>paratiroidektomi</strong> düşün.'],
       'Kalsimimetik bu üçlü bozukluk için en değerli ilaç. Paratiroidektomi için gecikme riski!');
   }
-  // 2) Ca↑ + P↑ + PTH<300
-  if (ca === 'high' && p === 'high' && (pth === 'low' || pth === 'verylow')) {
-    return rb('Ca ↑ + P ↑ + PTH &lt;300',
+  // 2) Ca↑ + P↑ + PTH<130
+  if (ca === 'high' && p === 'high' && pth === 'verylow') {
+    return rb('Ca ↑ + P ↑ + PTH &lt;130',
       ['Aktif D vitamini ve kalsimimetik <strong>kes</strong>.',
        'Kalsiyumsuz fosfor bağlayıcı (sevelamer) başla.',
        'Diyalizat Ca\'ını 1.25 mmol/L olarak ayarla.',
        'Diyaliz etkinliğini artır.',
        'Alüminyum maruziyetini ekarte et.'],
-      'Adinamik kemik (&lt;130) + vasküler kalsifikasyon riski. PTH\'ı daha da baskılama — P ve Ca\'yı düşürmeye odaklan.');
+      'Adinamik kemik + vasküler kalsifikasyon riski. PTH\'ı daha da baskılama — P ve Ca\'yı düşürmeye odaklan.');
   }
-  // 3) Ca↓ + P↑ + PTH↑
-  if ((ca === 'low' || ca === 'verylow') && p === 'high' && (pth === 'high' || pth === 'veryhigh')) {
-    return rb('Ca ↓ + P ↑ + PTH ↑',
+  // 3) Ca↓ + P↑ + PTH>600
+  if ((ca === 'low' || ca === 'verylow') && p === 'high' && pth === 'veryhigh') {
+    return rb('Ca ↓ + P ↑ + PTH &gt;600',
       ['<strong>ÖNCE P düşür</strong> — kalsiyum içeren bağlayıcı (Ca\'ı da yükseltir) verilebilir.',
        'P &lt;5.5 olduktan sonra aktif D vitamini ekle.'],
       '<strong>Kalsimimetik VERME!</strong> Ca &lt;8.5 iken sinakalset/etelkalsetid ciddi hipokalsemi yapar. Ca-içeren bağlayıcı + D vit öncelikli.');
   }
-  // 4) Ca↓ + P↓ + PTH↑
-  if ((ca === 'low' || ca === 'verylow') && (p === 'low' || p === 'verylow' || p === 'verylow_mild') && (pth === 'high' || pth === 'veryhigh')) {
-    return rb('Ca ↓ + P ↓ + PTH ↑',
+  // 4) Ca↓ + P↓ + PTH>600
+  if ((ca === 'low' || ca === 'verylow') && (p === 'low' || p === 'verylow' || p === 'verylow_mild') && pth === 'veryhigh') {
+    return rb('Ca ↓ + P ↓ + PTH &gt;600',
       ['Fosfat bağlayıcı <strong>kes</strong>.',
        'Oral kalsiyum desteği ver. (Ca &lt;7.5 ise IV kalsiyum).',
        'Aktif D vitamini başla (Ca ve P absorpsiyonunu artırır, PTH baskılar).',
        'Nütrisyon desteği.'],
       'Malnütrisyon düşün — beslenme durumu, albümin, nütrisyon destek programı değerlendir.');
   }
-  // 5) Ca↑ + P↓ + PTH↑
-  if (ca === 'high' && (p === 'low' || p === 'verylow' || p === 'verylow_mild') && (pth === 'high' || pth === 'veryhigh')) {
-    return rb('Ca ↑ + P ↓ + PTH ↑',
+  // 5) Ca↑ + P↓ + PTH>600
+  if (ca === 'high' && (p === 'low' || p === 'verylow' || p === 'verylow_mild') && pth === 'veryhigh') {
+    return rb('Ca ↑ + P ↓ + PTH &gt;600',
       ['Kalsimimetik başla (Ca ve PTH\'ı birlikte düşürür).',
        'Aktif D vitamini <strong>VERME</strong> — Ca\'ı daha da artırır.',
        'Fosfat bağlayıcı kes.',
        'Otonom/tersiyer hiperparatiroidizm değerlendir.'],
       'P düşük + Ca yüksek + PTH yüksek = otonom paratiroid? Sintigrafi/USG yap. Paratiroidektomi değerlendirmesi.');
   }
-  // 6) D vit↓ + Ca↓ + PTH↑
-  if ((vitd === 'deficient' || vitd === 'insufficient') && (ca === 'low' || ca === 'verylow') && (pth === 'high' || pth === 'veryhigh')) {
-    return rb('D vit ↓ + Ca ↓ + PTH ↑ — "Eksiklik Triadı"',
+  // 6) D vit↓ + Ca↓ + PTH>600
+  if ((vitd === 'deficient' || vitd === 'insufficient') && (ca === 'low' || ca === 'verylow') && pth === 'veryhigh') {
+    return rb('D vit ↓ + Ca ↓ + PTH &gt;600 — "Eksiklik Triadı"',
       ['<strong>ÖNCE</strong> kolekalsiferol replasmanı + oral kalsiyum.',
        'Ca &lt;7.5 ise IV kalsiyum replasmanı.',
        'Ardından aktif D vitamini (PTH kontrolü için).',
        'Diyalizat Ca\'ını 1.50 mmol/L olarak ayarla.'],
       'Klasik eksiklik triadı — nütrisyonel D vitamini ile çoğu düzelir. Aktif D vitamini substratsız çalışamaz.');
   }
-  // 7) D vit↓ + P↑ + PTH↑
-  if ((vitd === 'deficient' || vitd === 'insufficient') && p === 'high' && (pth === 'high' || pth === 'veryhigh')) {
-    return rb('D vit ↓ + P ↑ + PTH ↑',
+  // 7) D vit↓ + P↑ + PTH>600
+  if ((vitd === 'deficient' || vitd === 'insufficient') && p === 'high' && pth === 'veryhigh') {
+    return rb('D vit ↓ + P ↑ + PTH &gt;600',
       ['<strong>ÖNCE P düşür</strong> — fosfat bağlayıcı + diyet.',
        'Kolekalsiferol replasmanı başla.',
        'P &lt;5.5 olduktan sonra aktif D vitamini ekle.',
@@ -816,11 +849,11 @@ function tripleParamRecs(ca, p, pth, vitd, cCa) {
 
 // ---------- Quadruple-parameter combinations ----------
 function quadParamRecs(ca, p, pth, vitd, cCa) {
-  // 1) D vit↓ + Ca↓ + P↑ + PTH↑
+  // 1) D vit↓ + Ca↓ + P↑ + PTH>600
   if ((vitd === 'deficient' || vitd === 'insufficient') &&
       (ca === 'low' || ca === 'verylow') &&
       p === 'high' &&
-      (pth === 'high' || pth === 'veryhigh')) {
+      pth === 'veryhigh') {
     return rb('D vit ↓ + Ca ↓ + P ↑ + PTH ↑ — En Sık Klinik Senaryo',
       ['Kolekalsiferol replasmanı başla.',
        'Kalsiyum içeren fosfat bağlayıcı ver (Ca\'ı yükseltir + P\'yi düşürür).',
@@ -829,11 +862,11 @@ function quadParamRecs(ca, p, pth, vitd, cCa) {
        'Diyaliz etkinliğini artır.'],
       'Adım adım yaklaş: önce substrat (D vit), sonra P kontrolü, sonra PTH tedavisi.');
   }
-  // 2) D vit↓ + Ca↑ + P↑ + PTH↑
+  // 2) D vit↓ + Ca↑ + P↑ + PTH>600
   if ((vitd === 'deficient' || vitd === 'insufficient') &&
       ca === 'high' &&
       p === 'high' &&
-      (pth === 'high' || pth === 'veryhigh')) {
+      pth === 'veryhigh') {
     return rb('D vit ↓ + Ca ↑ + P ↑ + PTH ↑',
       ['Aktif D vitamini <strong>kesinlikle verilmemeli</strong>.',
        'Kalsiyumsuz fosfor bağlayıcı (sevelamer veya lantanyum) başla + diyalizat Ca\'ını 1.25 mmol/L olarak ayarla.',
@@ -843,11 +876,11 @@ function quadParamRecs(ca, p, pth, vitd, cCa) {
        'Yanıtsızsa paratiroidektomi düşün.'],
       'Aktif D vitamini Ca ve P\'yi daha da artırır — verilmemeli. Nütrisyonel D vitamini güvenlidir.');
   }
-  // 3) D vit↓ + Ca↓ + P↓ + PTH↑
+  // 3) D vit↓ + Ca↓ + P↓ + PTH>600
   if ((vitd === 'deficient' || vitd === 'insufficient') &&
       (ca === 'low' || ca === 'verylow') &&
       (p === 'low' || p === 'verylow' || p === 'verylow_mild') &&
-      (pth === 'high' || pth === 'veryhigh')) {
+      pth === 'veryhigh') {
     return rb('D vit ↓ + Ca ↓ + P ↓ + PTH ↑',
       ['Tüm fosfat bağlayıcıları <strong>kes</strong>.',
        'Kolekalsiferol + oral kalsiyum desteği.',
@@ -856,11 +889,11 @@ function quadParamRecs(ca, p, pth, vitd, cCa) {
        'Diyalizat Ca\'ını 1.50 mmol/L olarak ayarla.'],
       'Malnütrisyon alarmı! Diyaliz yeterliliği ve beslenme öncelikli. İlaç tedavisi ikinci planda.');
   }
-  // 4) D vit↓ + Ca↑ + P↓ + PTH↓
+  // 4) D vit↓ + Ca↑ + P↓ + PTH<130
   if ((vitd === 'deficient' || vitd === 'insufficient') &&
       ca === 'high' &&
       (p === 'low' || p === 'verylow' || p === 'verylow_mild') &&
-      (pth === 'low' || pth === 'verylow')) {
+      pth === 'verylow') {
     return rb('D vit ↓ + Ca ↑ + P ↓ + PTH ↓',
       ['Tüm aktif D vitamini + kalsimimetik <strong>kes</strong>.',
        'Fosfor bağlayıcılar kes.',
@@ -898,7 +931,7 @@ function backToMain() {
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 function resetForm() {
-  ['ca','alb','p','pth','vitd'].forEach(id => document.getElementById(id).value = '');
+  ['ca','alb','p','pth','pthPrev','vitd'].forEach(id => document.getElementById(id).value = '');
   document.getElementById('results').classList.add('hidden');
   document.getElementById('results').innerHTML = '';
   window.scrollTo({ top: 0, behavior: 'smooth' });
